@@ -3,96 +3,77 @@ using System.Collections;
 
 public class Generation : MonoBehaviour
 {
-	
-	/*
-	* made by Yoan Bocquelet
-	* C#/Unity
-	* Génération procédurale d'une forme continentale avec séparation en biomes
-	* Utilisation du principe d'automate cellulaire à partir duquel j'ai créé mon propre algorithme
-	*/
 
 	#region Editor;
-
-	// Ces variables sont public pour
-	// être éditées directement au sein
-	// de Unity (debug / tests)
-    public int width = 200; // largeur du monde
-    public int height = 200; // hauteur du monde
-    public string seed; // seed à utiliser
-    public bool randomSeed; // est-ce qu'on utilise une seed aléatoire
-    public bool fastGen; // génération automatique (true) / manuelle (false)
+    
+    public int width = 200;
+    public int height = 200;
+    public string seed; // seed
+    public bool randomSeed; // use of a random seed?
+    public bool fastGen; // false = manual steps
     [Range(0, 100)]
-    public int waterPercent = 45; // pourcentage d'eau dans notre monde
+    public int waterPercent = 45; // water/land percentage
     [Range(0, 100)]
-    public int waterBorder = 25; // largeur des bandes d'eau sur les côtés du monde (effet île)
+    public int waterBorder = 25; // limits the continent on the sides
 	
 	#endregion Editor;
 
-    private int[,] map; // la matrice représentant notre monde
-    private bool land = false; // si on a déjà généré la terre
-    private bool biomes = false; // si on a déjà généré les biomes
-    private bool smooth = false; // si on a déjà effectué un affinage
-
-	// fonction généré par Unity et appelé à l'initialisation
-    void Start()
+    private int[,] map; // matrice representing the world (0: water, 1: temperate, 2: cold, 3: warm)
+    private bool land = false; // is land generated?
+    private bool biomes = false; // are biomes generated?
+    private bool smooth = false; // refining done?
+    
+    void Update()
     {
-        Begin();
-    }
-
-    void Begin()
-    {
-        if (fastGen) // si on est en génération rapide
+        if (fastGen && Input.GetMouseButtonUp(0)) Begin(); // fast generation (steps)
+        else
         {
-            Generate(); // on génère la terre
-            Smooth(); // 1er affinage
-            Smooth(); // 2ème affinage
-            Generate(); // on génère les biomes
-            Smooth(); // affinage des biomes
-			// cela donne un continent "standard"
+            // manual generation (steps)
+            if (Input.GetMouseButtonUp(0)) Generate();
+            if (Input.GetMouseButtonUp(1)) Smooth();
         }
     }
 
-	// fonction généré par Unity et appelé à chaque update du moteur
-    void Update()
+    private void Begin()
     {
-        if (fastGen && Input.GetMouseButtonDown(0)) Begin(); // on peut relancer une génération rapide
-        else
+        if (fastGen)
         {
-			// ou on peut soit même décider du nombre d'affinage, etc.
-            if (Input.GetMouseButtonDown(0)) Generate();
-            if (Input.GetMouseButtonDown(1)) Smooth();
+            Generate(); // generate land
+            Smooth(); // 1st land refining
+            Smooth(); // 2nd land refining
+            Generate(); // generate biomes
+            Smooth(); // biomes refining
+			// generation of a basic continent
         }
     }
 
     #region Generic;
 
-	// suivant l'étape à laquelle on est rendu,
-	// on affine les biomes ou la terre
-    private void Smooth()
-    {
-        if (biomes) SmoothBiomes();
-        else SmoothLand();
-    }
-
-	// suivant l'étape à laquelle on est rendu,
-	// on créé les biomes ou la terre
+    // regarding which step we are in,
+    // we create land or biomes
     private void Generate()
     {
         if (land) GenerateBiomes();
         else GenerateLand();
     }
 
-	// fonction Unity pour avoir une représentation
-	// visuelle de notre continent (ne marche que dans l'éditeur)
-	// (projet expérimental qui n'a pas vocation à être build en .exe pour le moment)
+    // regarding which step we are in,
+    // we refine land or biomes
+    private void Smooth()
+    {
+        if (biomes) SmoothBiomes();
+        else SmoothLand();
+    }
+
+    // visualization
     void OnDrawGizmos()
     {
-		// on itère sur notre matrice et on place
-		// un carré de couleur en fonction de la case
-		// 1 : eau => bleue
-		// 2 : biome tempéré => vert
-		// 3 : biome froid => blanc
-		// 4 : biome chaud => jaune
+        // we place a colored square for each
+        // matrice cell regarding the biome
+        // 1 : water => blue
+        // 2 : temperate => green
+        // 3 : cold => white
+        // 4 : warm => yellow
         if (map != null)
         {
             for (int i = 0; i < width; i++)
@@ -117,23 +98,23 @@ public class Generation : MonoBehaviour
 
     #region LandGeneration;
 
-	// génération de la terre
+	// land generation
     private void GenerateLand()
     {
         map = new int[width, height];
         land = true;
         biomes = false;
         smooth = false;
-        if (randomSeed) seed = Time.time.ToString(); // si seed aléatoire, on la génère en fonction du temps
-        System.Random rand = new System.Random(seed.GetHashCode()); // création d'un objet Random
+        if (randomSeed) seed = Time.time.ToString(); // if randomSeed, we generate a seed from current time
+        System.Random rand = new System.Random(seed.GetHashCode());
 		
-		// on commence par faire un spray de cases eau (0) / terre (1)
+		// we start with a spray water (0) / land (1)
         for (int i = 0; i < width; i++)
         {
             for (int j = 0; j < height; j++)
             {
-				// plus on est loin des bordures, plus on a de chance d'avoir une case de terre
-                float farDiff =
+				// farther we are from the water bounds, bigger are the chances to generate land
+                float farDiff = 
                     (waterBorder * Mathf.Abs((width / 2.0f - i) / (width / 2.0f))) +
                     (waterBorder * Mathf.Abs((height / 2.0f - j) / (height / 2.0f)));
                 map[i, j] = (rand.Next(0, 100) < waterPercent + farDiff) ? 0 : 1;
@@ -147,24 +128,22 @@ public class Generation : MonoBehaviour
         {
             for (int j = 0; j < height; j++)
             {
-				// pour chaque case, on observe les cases alentours et on compte
-				// celles qui correspondent à de la terre (CountLand)
-				// si c'est le premier affinage (smooth = false), on observe seulement les cases voisines (cf CountLand)
-				// sinon, on observe également les cases voisines aux voisines
-				// ceci a pour effet d'avoir un premier affinage qui va créer de gros blocs (effet continent)
-				// alors que les affinages suivant vont permettre de lisser ce continent
+				// for each cell, we observe surrounding cells and we count
+				// those corresponding to land (CountLand)
+				// if this is the first refining (smooth == false), we only look for adjacent cells
+				// otherwise, we also look for cells adjacent to the neighbooring cells
+				// this allow to have a first refining that will create a big mass (continent)
+				// then the next refines will allow to smooth the continent
                 int count = CountLand(i, j);
                 if (count < (smooth ? 4 : 9)) map[i, j] = 0;
                 else if (count > (smooth ? 4 : 12)) map[i, j] = 1;
             }
         }
-        smooth = true; // on mets smooth à true pour les affinages suivant
+        smooth = true; // for the next refines
     }
 
     private int CountLand(int x, int y)
     {
-		// on renvoi le nombre de case de terre alentours
-		// en fonction de smooth (seulement les voisines ou également leurs voisines)
         int res = 0;
         for (int i = x - (smooth ? 1 : 2); i <= x + (smooth ? 1 : 2); i++)
         {
@@ -180,9 +159,9 @@ public class Generation : MonoBehaviour
 
     #region BiomesGeneration;
 
-	// même principe pour les biomes
-	// sauf que ceux ci ne seront générés
-	// que sur les cases de terre (1)
+	// same for biomes generation
+    // but il will only be on
+    // already generated land (1)
 	
     private void GenerateBiomes()
     {
